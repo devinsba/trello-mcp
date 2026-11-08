@@ -13,17 +13,13 @@ API = "https://trello.com/1"
 AUTHORIZE_URL = "https://auth.atlassian.com/authorize"
 TOKEN_URL = "https://auth.atlassian.com/oauth/token"
 # Must be a subset of the client's configured scopes; offline_access yields a refresh token.
-DEFAULT_SCOPES = "read:member:trello read:board:trello write:board:trello offline_access"
+SCOPES = "read:member:trello read:board:trello write:board:trello offline_access"
 
 
 def token_file() -> Path:
     return Path(
         os.environ.get("TRELLO_MCP_TOKEN_FILE", "~/.config/trello-mcp/token.json")
     ).expanduser()
-
-
-def scopes() -> str:
-    return os.environ.get("TRELLO_SCOPES", DEFAULT_SCOPES)
 
 
 def load_token() -> dict:

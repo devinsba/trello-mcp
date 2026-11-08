@@ -7,9 +7,9 @@ Tools: `list_boards`, `list_lists`, `list_cards`, `create_card`, `comment_card`.
 ## Setup
 
 Create an OAuth 2.0 client for your app at <https://trello.com/apps/admin> (OAuth 2.0 tab). Add
-`http://localhost:8765/oauth/callback` as a callback URL and enable the scopes you need
-(`read:member:trello`, `read:board:trello`, `write:board:trello` by default; override with
-`TRELLO_SCOPES`). The client ID is built in, so the client must be a public one (no secret).
+`http://localhost:8765/oauth/callback` as a callback URL and enable the scopes
+`read:member:trello`, `read:board:trello` and `write:board:trello`. The client ID is built in, so
+the client must be a public one (no secret).
 
 Authorize once. The directory `~/.config/trello-mcp` is mounted **read/write**, because access
 tokens last an hour and each refresh rotates the single-use refresh token, which has to be saved.
@@ -76,7 +76,6 @@ uv run trello-mcp stdio     # or: serve | boards | lists <board_id> | cards <lis
 
 | Var | Purpose |
 | --- | --- |
-| `TRELLO_SCOPES` | space-separated scopes (default read/write board + member read + `offline_access`) |
 | `TRELLO_MCP_TOKEN_FILE` | token path (default `~/.config/trello-mcp/token.json`) |
 | `LOG_LEVEL` | default `INFO`; logs are JSON on stderr with trace ids |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | enables OTLP/HTTP traces and metrics export (other `OTEL_*` apply) |
