@@ -26,7 +26,7 @@ read-only and `TRELLO_API_KEY` is passed through from your shell.
 claude mcp add trello -e TRELLO_API_KEY -- docker run -i --rm \
   -e TRELLO_API_KEY -e TRELLO_MCP_TOKEN_FILE=/run/trello-token \
   -v "$HOME/.config/trello-mcp/token:/run/trello-token:ro" \
-  ghcr.io/devinsba/trello-mcp trello-mcp stdio
+  ghcr.io/devinsba/trello-mcp stdio
 ```
 
 ```json
@@ -34,7 +34,7 @@ claude mcp add trello -e TRELLO_API_KEY -- docker run -i --rm \
   "run", "-i", "--rm",
   "-e", "TRELLO_API_KEY", "-e", "TRELLO_MCP_TOKEN_FILE=/run/trello-token",
   "-v", "/Users/you/.config/trello-mcp/token:/run/trello-token:ro",
-  "ghcr.io/devinsba/trello-mcp", "trello-mcp", "stdio"
+  "ghcr.io/devinsba/trello-mcp", "stdio"
 ], "env": { "TRELLO_API_KEY": "..." } } } }
 ```
 

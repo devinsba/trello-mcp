@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import sys
 import threading
 import time
 import webbrowser
@@ -39,7 +40,8 @@ def main() -> None:
     sub.add_parser("boards", help="list boards")
     sub.add_parser("lists", help="list a board's lists").add_argument("board_id")
     sub.add_parser("cards", help="list a list's cards").add_argument("list_id")
-    args = p.parse_args()
+    # Bare `trello-mcp` serves: the image's web process is bare, so `docker run image stdio` works.
+    args = p.parse_args(sys.argv[1:] or ["serve"])
     telemetry.setup()
     telemetry.configure_logging(os.environ.get("LOG_LEVEL", "INFO").upper())
 

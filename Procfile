@@ -1,1 +1,1 @@
-web: trello-mcp serve
+web: trello-mcp

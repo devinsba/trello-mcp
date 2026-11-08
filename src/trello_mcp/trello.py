@@ -37,7 +37,11 @@ def call(method: str, path: str, **params):
     resp = requests.request(
         method,
         f"{API}{path}",
-        params={"key": api_key(), "token": load_token(), **params},
+        # Header, not query params: URLs end up in exception messages and logs.
+        headers={
+            "Authorization": f'OAuth oauth_consumer_key="{api_key()}", oauth_token="{load_token()}"'
+        },
+        params=params,
         timeout=30,
     )
     resp.raise_for_status()
