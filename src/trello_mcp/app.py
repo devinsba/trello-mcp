@@ -7,13 +7,16 @@ from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from pydantic import BaseModel
 
 from . import trello
 
-# host != localhost disables the localhost-only Host check, which would reject real hostnames
-mcp = FastMCP("trello", host="0.0.0.0", stateless_http=True, streamable_http_path="/")
+# FastAPI ships its own OTel; we use the contrib instrumentor instead, so turn it off.
+NO_NATIVE_OTEL = {"tracing": False, "metrics": False, "logs": False, "operation_spans": False}
+
+mcp = MCPServer("trello")
 mcp.tool()(trello.list_boards)
 mcp.tool()(trello.list_lists)
 mcp.tool()(trello.list_cards)
@@ -46,7 +49,8 @@ def make_app(base_url: str | None = None) -> FastAPI:
         async with mcp.session_manager.run():
             yield
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, openapi_url=None, telemetry=NO_NATIVE_OTEL)
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="healthz")  # probes are noise
     app.state.login_done = done
 
     @app.get("/healthz")
@@ -78,5 +82,9 @@ def make_app(base_url: str | None = None) -> FastAPI:
         done["saved"] = True
         return {"ok": True}
 
-    app.mount("/mcp", mcp.streamable_http_app())
+    # host != localhost disables the localhost-only Host check, which would reject real hostnames
+    app.mount(
+        "/mcp",
+        mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, host="0.0.0.0"),
+    )
     return app

@@ -35,3 +35,13 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest
 
+  image:
+    # Release builds the real images itself
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: buildpacks/github-actions/setup-pack@v6.2.1
+        with:
+          pack-version: 0.40.10
+      - run: pack build ci-image --builder paketobuildpacks/builder-jammy-buildpackless-tiny --buildpack docker://paketobuildpacks/python

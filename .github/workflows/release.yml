@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  # One native runner per arch: pack builds for the host platform only.
+  build:
+    needs: ci
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: buildpacks/github-actions/setup-pack@v6.2.1
+        with:
+          pack-version: 0.40.10
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: >-
+          pack build "ghcr.io/$GITHUB_REPOSITORY:$GITHUB_SHA-${{ matrix.arch }}"
+          --builder paketobuildpacks/builder-jammy-buildpackless-tiny --buildpack docker://paketobuildpacks/python --platform linux/${{ matrix.arch }} --publish
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    outputs:
+      draft: ${{ steps.release.outputs.draft }}
+      release-url: ${{ steps.release.outputs.url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+      # Stitch the per-arch images into one multi-arch tag set
+      - run: |
+          docker buildx imagetools create \
+            $(jq -r '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            "ghcr.io/$GITHUB_REPOSITORY:$GITHUB_SHA-amd64" \
+            "ghcr.io/$GITHUB_REPOSITORY:$GITHUB_SHA-arm64"
+      # Draft first; the notes job fills it in and finalize publishes it.
+      # A release made by hand in the UI already exists: leave it alone.
+      - id: release
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+          gh release view "$GITHUB_REF_NAME" --json isDraft,apiUrl --jq '"draft=\(.isDraft)\nurl=\(.apiUrl)"' >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notes:
+    needs: publish
+    if: needs.publish.outputs.draft == 'true'
+    # Caller permissions must cover every job in the reusable workflow
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: read
+      copilot-requests: write
+    uses: ./.github/workflows/release-notes.lock.yml
+    with:
+      tag: ${{ github.ref_name }}
+
+  finalize:
+    needs: [publish, notes]
+    # Publish even if the agent failed (the generated notes are the fallback); not if the image push failed
+    if: always() && needs.publish.result == 'success' && needs.publish.outputs.draft == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # By ID, re-setting the tag: the notes agent's update detaches the draft from its tag
+      # (it becomes untagged-<hash>), so a lookup by tag name no longer finds it.
+      - run: gh api -X PATCH "$RELEASE_URL" -f tag_name="$GITHUB_REF_NAME" -F draft=false --jq .html_url
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_URL: ${{ needs.publish.outputs.release-url }}

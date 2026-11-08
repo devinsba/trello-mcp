@@ -16,3 +16,13 @@ def test_oauth_flow(monkeypatch, tmp_path):
         assert c.post("/oauth/token", json={"token": "t", "state": "bad"}).status_code == 400
         assert c.post("/oauth/token", json={"token": "t", "state": state}).status_code == 200
     assert trello.load_token() == "t"
+
+
+def test_mcp_lists_tools():
+    with TestClient(make_app("http://x")) as c:
+        r = c.post(
+            "/mcp/",
+            json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            headers={"accept": "application/json, text/event-stream"},
+        )
+    assert r.status_code == 200 and "list_boards" in r.text

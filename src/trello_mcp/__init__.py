@@ -1,18 +1,19 @@
 import argparse
 import json
+import os
 import threading
 import time
 import webbrowser
 
 import uvicorn
 
-from . import trello
+from . import telemetry, trello
 from .app import make_app
 
 
 def login(port: int) -> None:
     server = uvicorn.Server(
-        uvicorn.Config(make_app(f"http://localhost:{port}"), port=port, log_level="warning")
+        uvicorn.Config(make_app(f"http://localhost:{port}"), port=port, log_config=None)
     )
     threading.Thread(target=server.run, daemon=True).start()
     while not server.started:
@@ -38,10 +39,13 @@ def main() -> None:
     sub.add_parser("lists", help="list a board's lists").add_argument("board_id")
     sub.add_parser("cards", help="list a list's cards").add_argument("list_id")
     args = p.parse_args()
+    telemetry.setup()
+    telemetry.configure_logging(os.environ.get("LOG_LEVEL", "INFO").upper())
 
     match args.cmd:
         case "serve":
-            uvicorn.run(make_app(), host=args.host, port=args.port)
+            # log_config=None keeps the root JSON logging with trace ids
+            uvicorn.run(make_app(), host=args.host, port=args.port, log_config=None)
         case "login":
             login(args.port)
         case "boards":
