@@ -26,3 +26,38 @@ def test_mcp_lists_tools():
             headers={"accept": "application/json, text/event-stream"},
         )
     assert r.status_code == 200 and "list_boards" in r.text
+
+
+def test_stdio_lists_tools():
+    import json
+    import subprocess
+    import sys
+
+    p = subprocess.Popen(
+        [sys.executable, "-c", "from trello_mcp import main; main()", "stdio"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+
+    def rpc(msg):
+        p.stdin.write(json.dumps({"jsonrpc": "2.0", **msg}) + "\n")
+        p.stdin.flush()
+        return p.stdout.readline() if "id" in msg else None
+
+    try:
+        rpc(
+            {
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "t", "version": "0"},
+                },
+            }
+        )
+        rpc({"method": "notifications/initialized"})
+        assert "list_boards" in rpc({"id": 2, "method": "tools/list"})
+    finally:
+        p.kill()

@@ -8,7 +8,7 @@ import webbrowser
 import uvicorn
 
 from . import telemetry, trello
-from .app import make_app
+from .app import make_app, mcp
 
 
 def login(port: int) -> None:
@@ -35,6 +35,7 @@ def main() -> None:
     sub.add_parser(
         "login", help="run the OAuth flow in your browser and save the token"
     ).add_argument("--port", type=int, default=8765)
+    sub.add_parser("stdio", help="run the MCP server over stdio (for command-launched clients)")
     sub.add_parser("boards", help="list boards")
     sub.add_parser("lists", help="list a board's lists").add_argument("board_id")
     sub.add_parser("cards", help="list a list's cards").add_argument("list_id")
@@ -46,6 +47,8 @@ def main() -> None:
         case "serve":
             # log_config=None keeps the root JSON logging with trace ids
             uvicorn.run(make_app(), host=args.host, port=args.port, log_config=None)
+        case "stdio":
+            mcp.run("stdio")  # stdout is the protocol channel; logs already go to stderr
         case "login":
             login(args.port)
         case "boards":

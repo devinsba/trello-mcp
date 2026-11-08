@@ -19,17 +19,27 @@ uv run trello-mcp serve     # MCP over streamable HTTP at :8080/mcp, health at /
 
 ## Install in an MCP client
 
-Run `trello-mcp login` once first, then run the server (`uv run trello-mcp serve`, or the
-`ghcr.io/devinsba/trello-mcp` image) and point your client at it. The transport is streamable
-HTTP; there is no stdio mode.
+Run `trello-mcp login` once first (or set `TRELLO_TOKEN`). Two transports:
 
-Claude Code:
+**stdio** (the client launches the command; needs `TRELLO_API_KEY` in its env):
+
+```sh
+claude mcp add trello -e TRELLO_API_KEY=... -- uv run --directory /path/to/trello-mcp trello-mcp stdio
+```
+
+```json
+{ "mcpServers": { "trello": { "command": "uv",
+  "args": ["run", "--directory", "/path/to/trello-mcp", "trello-mcp", "stdio"],
+  "env": { "TRELLO_API_KEY": "..." } } } }
+```
+
+**HTTP** (run `uv run trello-mcp serve` or the `ghcr.io/devinsba/trello-mcp` image yourself):
 
 ```sh
 claude mcp add --transport http trello http://localhost:8080/mcp
 ```
 
-Other clients (Claude Desktop via `mcp-remote`, Cursor, etc.):
+Other clients:
 
 ```json
 { "mcpServers": { "trello": { "url": "http://localhost:8080/mcp" } } }
