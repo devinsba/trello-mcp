@@ -12,15 +12,16 @@ from . import telemetry, trello
 from .app import make_app, mcp
 
 
-def login(port: int) -> None:
+def login(host: str, port: int) -> None:
     server = uvicorn.Server(
-        uvicorn.Config(make_app(f"http://localhost:{port}"), port=port, log_config=None)
+        uvicorn.Config(make_app(f"http://localhost:{port}"), host=host, port=port, log_config=None)
     )
     threading.Thread(target=server.run, daemon=True).start()
     while not server.started:
         time.sleep(0.05)
-    print(f"Opening browser to authorize; token will be saved to {trello.token_file()}")
-    webbrowser.open(f"http://localhost:{port}/oauth/login")
+    url = f"http://localhost:{port}/oauth/login"
+    print(f"Open {url} to authorize; token will be saved to {trello.token_file()}", flush=True)
+    webbrowser.open(url)
     while not server.config.app.state.login_done["saved"]:
         time.sleep(0.2)
     server.should_exit = True
@@ -33,9 +34,9 @@ def main() -> None:
     s = sub.add_parser("serve", help="run the MCP server (/mcp) with OAuth routes (/oauth)")
     s.add_argument("--host", default="0.0.0.0")
     s.add_argument("--port", type=int, default=8080)
-    sub.add_parser(
-        "login", help="run the OAuth flow in your browser and save the token"
-    ).add_argument("--port", type=int, default=8765)
+    lg = sub.add_parser("login", help="run the OAuth flow in your browser and save the token")
+    lg.add_argument("--host", default="127.0.0.1")  # 0.0.0.0 inside a container
+    lg.add_argument("--port", type=int, default=8765)
     sub.add_parser("stdio", help="run the MCP server over stdio (for command-launched clients)")
     sub.add_parser("boards", help="list boards")
     sub.add_parser("lists", help="list a board's lists").add_argument("board_id")
@@ -52,7 +53,7 @@ def main() -> None:
         case "stdio":
             mcp.run("stdio")  # stdout is the protocol channel; logs already go to stderr
         case "login":
-            login(args.port)
+            login(args.host, args.port)
         case "boards":
             print(json.dumps(trello.list_boards(), indent=2))
         case "lists":

@@ -8,12 +8,20 @@ Tools: `list_boards`, `list_lists`, `list_cards`, `create_card`, `comment_card`.
 
 Create a Power-Up at <https://trello.com/power-ups/admin> to get an API key, and add
 `http://localhost:8765` (the login callback) to its allowed origins. Then authorize once on the
-host (it opens a browser, so it can't run in the container):
+host. With Docker (the token directory is mounted writable only for this step; open the printed
+URL yourself):
 
 ```sh
 export TRELLO_API_KEY=...
-uv run trello-mcp login     # saves the token to ~/.config/trello-mcp/token (mode 600)
+mkdir -p ~/.config/trello-mcp
+docker run --rm -it -p 127.0.0.1:8765:8765 \
+  -e TRELLO_API_KEY -e TRELLO_MCP_TOKEN_FILE=/run/trello/token \
+  -v "$HOME/.config/trello-mcp:/run/trello" \
+  ghcr.io/devinsba/trello-mcp login --host 0.0.0.0
 ```
+
+Or from source: `uv run trello-mcp login` (opens the browser). Either way the token is saved to
+`~/.config/trello-mcp/token` (mode 600).
 
 ## Run with Docker (default)
 
