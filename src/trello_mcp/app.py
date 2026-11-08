@@ -1,5 +1,7 @@
-"""FastAPI app: MCP at /mcp, OAuth (token) flow at /oauth, health at /healthz."""
+"""FastAPI app: MCP at /mcp, OAuth 2.0 flow at /oauth, health at /healthz."""
 
+import base64
+import hashlib
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -9,7 +11,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from mcp.server.mcpserver import MCPServer
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from pydantic import BaseModel
 
 from . import trello
 
@@ -23,26 +24,17 @@ mcp.tool()(trello.list_cards)
 mcp.tool()(trello.create_card)
 mcp.tool()(trello.comment_card)
 
-# Trello's authorize flow returns the token in the URL fragment, which the server never sees,
-# so the callback page reads it in JS and POSTs it back.
-CALLBACK_PAGE = """<!doctype html><title>Trello login</title><p id=m>Finishing login…</p>
-<script>
-const token = new URLSearchParams(location.hash.slice(1)).get("token");
-fetch("/oauth/token", {method: "POST", headers: {"content-type": "application/json"},
-  body: JSON.stringify({token, state: new URLSearchParams(location.search).get("state")})})
-  .then(r => m.textContent = r.ok && token ? "Logged in. Close this tab." : "Login failed.");
-</script>"""
 
-
-class TokenBody(BaseModel):
-    token: str | None
-    state: str
+def _pkce() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
 
 def make_app(base_url: str | None = None) -> FastAPI:
     base_url = base_url or os.environ.get("TRELLO_MCP_BASE_URL", "http://localhost:8765")
-    state = secrets.token_urlsafe(16)  # stops other sites from planting a token
     done = {"saved": False}
+    pending: dict[str, str] = {}  # one login at a time
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -59,28 +51,28 @@ def make_app(base_url: str | None = None) -> FastAPI:
 
     @app.get("/oauth/login")
     def login():
+        pending["verifier"], challenge = _pkce()
+        pending["state"] = secrets.token_urlsafe(16)  # stops other sites from planting a code
         params = {
-            "key": trello.api_key(),
-            "name": "trello-mcp",
-            "scope": "read,write",
-            "expiration": "never",
-            "response_type": "token",
-            "callback_method": "fragment",
-            "return_url": f"{base_url}/oauth/callback?state={state}",
+            "client_id": trello.client_id(),
+            "scope": trello.scopes(),
+            "redirect_uri": f"{base_url}/oauth/callback",
+            "response_type": "code",
+            "prompt": "consent",
+            "state": pending["state"],
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
         }
-        return RedirectResponse(f"https://trello.com/1/authorize?{urlencode(params)}")
+        return RedirectResponse(f"{trello.AUTHORIZE_URL}?{urlencode(params)}")
 
     @app.get("/oauth/callback", response_class=HTMLResponse)
-    def callback():
-        return CALLBACK_PAGE
-
-    @app.post("/oauth/token")
-    def token(body: TokenBody):
-        if not body.token or not secrets.compare_digest(body.state, state):
-            raise HTTPException(400, "bad token or state")
-        trello.save_token(body.token)
+    def callback(code: str, state: str):
+        if not pending or not secrets.compare_digest(state, pending["state"]):
+            raise HTTPException(400, "bad state")
+        trello.exchange_code(code, pending.pop("verifier"), f"{base_url}/oauth/callback")
+        pending.clear()
         done["saved"] = True
-        return {"ok": True}
+        return "Logged in. You can close this tab."
 
     # host != localhost disables the localhost-only Host check, which would reject real hostnames
     app.mount(

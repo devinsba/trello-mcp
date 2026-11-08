@@ -1,21 +1,58 @@
+import json
+import time
+from urllib.parse import parse_qs, urlparse
+
+import requests
 from fastapi.testclient import TestClient
 
 from trello_mcp import trello
 from trello_mcp.app import make_app
 
 
-def test_oauth_flow(monkeypatch, tmp_path):
-    monkeypatch.setenv("TRELLO_API_KEY", "k")
-    monkeypatch.setenv("TRELLO_MCP_TOKEN_FILE", str(tmp_path / "token"))
-    monkeypatch.delenv("TRELLO_TOKEN", raising=False)
+def fake_post(calls):
+    def post(url, json, timeout):
+        calls.append(json)
+        n = len(calls)
+        return type(
+            "R",
+            (),
+            {
+                "raise_for_status": lambda self: None,
+                "json": lambda self: {
+                    "access_token": f"a{n}",
+                    "refresh_token": f"r{n}",
+                    "expires_in": 3600,
+                },
+            },
+        )()
+
+    return post
+
+
+def test_oauth_flow_and_refresh(monkeypatch, tmp_path):
+    monkeypatch.setenv("TRELLO_CLIENT_ID", "cid")
+    monkeypatch.setenv("TRELLO_MCP_TOKEN_FILE", str(tmp_path / "token.json"))
+    calls = []
+    monkeypatch.setattr(requests, "post", fake_post(calls))
     with TestClient(make_app("http://x")) as c:
         assert c.get("/healthz").json() == {"status": "ok"}
-        r = c.get("/oauth/login", follow_redirects=False)
-        assert r.headers["location"].startswith("https://trello.com/1/authorize?key=k&")
-        state = r.headers["location"].split("state%3D")[-1].split("&")[0]
-        assert c.post("/oauth/token", json={"token": "t", "state": "bad"}).status_code == 400
-        assert c.post("/oauth/token", json={"token": "t", "state": state}).status_code == 200
-    assert trello.load_token() == "t"
+        loc = c.get("/oauth/login", follow_redirects=False).headers["location"]
+        q = parse_qs(urlparse(loc).query)
+        assert loc.startswith("https://auth.atlassian.com/authorize?")
+        assert q["code_challenge_method"] == ["S256"] and q["redirect_uri"] == [
+            "http://x/oauth/callback"
+        ]
+        assert c.get("/oauth/callback?code=c&state=bad").status_code == 400
+        assert c.get(f"/oauth/callback?code=c&state={q['state'][0]}").status_code == 200
+    assert calls[0]["grant_type"] == "authorization_code" and calls[0]["code_verifier"]
+    assert trello.access_token() == "a1"  # fresh: no refresh
+
+    saved = json.loads((tmp_path / "token.json").read_text())
+    saved["expires_at"] = time.time() - 1
+    (tmp_path / "token.json").write_text(json.dumps(saved))
+    assert trello.access_token() == "a2"  # expired: refreshed, single-use token rotated
+    assert calls[1] == {"client_id": "cid", "grant_type": "refresh_token", "refresh_token": "r1"}
+    assert json.loads((tmp_path / "token.json").read_text())["refresh_token"] == "r2"
 
 
 def test_mcp_lists_tools():
