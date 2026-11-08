@@ -45,9 +45,6 @@ def save_token(token: dict) -> None:
 
 
 def _token_request(**body) -> dict:
-    # client_secret only for confidential clients; public clients omit it.
-    if secret := os.environ.get("TRELLO_CLIENT_SECRET"):
-        body["client_secret"] = secret
     resp = requests.post(TOKEN_URL, json={"client_id": CLIENT_ID, **body}, timeout=30)
     resp.raise_for_status()
     return resp.json()
