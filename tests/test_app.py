@@ -30,7 +30,6 @@ def fake_post(calls):
 
 
 def test_oauth_flow_and_refresh(monkeypatch, tmp_path):
-    monkeypatch.setenv("TRELLO_CLIENT_ID", "cid")
     monkeypatch.setenv("TRELLO_MCP_TOKEN_FILE", str(tmp_path / "token.json"))
     calls = []
     monkeypatch.setattr(requests, "post", fake_post(calls))
@@ -51,7 +50,11 @@ def test_oauth_flow_and_refresh(monkeypatch, tmp_path):
     saved["expires_at"] = time.time() - 1
     (tmp_path / "token.json").write_text(json.dumps(saved))
     assert trello.access_token() == "a2"  # expired: refreshed, single-use token rotated
-    assert calls[1] == {"client_id": "cid", "grant_type": "refresh_token", "refresh_token": "r1"}
+    assert calls[1] == {
+        "client_id": trello.CLIENT_ID,
+        "grant_type": "refresh_token",
+        "refresh_token": "r1",
+    }
     assert json.loads((tmp_path / "token.json").read_text())["refresh_token"] == "r2"
 
 

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import requests
 
+# Public identifier of the OAuth 2.0 client (not a secret).
+CLIENT_ID = "nWVvErB2yFphPyjOpaBAUv56yZOGUB9f"
 API = "https://trello.com/1"
 AUTHORIZE_URL = "https://auth.atlassian.com/authorize"
 TOKEN_URL = "https://auth.atlassian.com/oauth/token"
@@ -18,10 +20,6 @@ def token_file() -> Path:
     return Path(
         os.environ.get("TRELLO_MCP_TOKEN_FILE", "~/.config/trello-mcp/token.json")
     ).expanduser()
-
-
-def client_id() -> str:
-    return os.environ["TRELLO_CLIENT_ID"]
 
 
 def scopes() -> str:
@@ -50,7 +48,7 @@ def _token_request(**body) -> dict:
     # client_secret only for confidential clients; public clients omit it.
     if secret := os.environ.get("TRELLO_CLIENT_SECRET"):
         body["client_secret"] = secret
-    resp = requests.post(TOKEN_URL, json={"client_id": client_id(), **body}, timeout=30)
+    resp = requests.post(TOKEN_URL, json={"client_id": CLIENT_ID, **body}, timeout=30)
     resp.raise_for_status()
     return resp.json()
 

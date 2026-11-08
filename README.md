@@ -9,18 +9,16 @@ Tools: `list_boards`, `list_lists`, `list_cards`, `create_card`, `comment_card`.
 Create an OAuth 2.0 client for your app at <https://trello.com/apps/admin> (OAuth 2.0 tab). Add
 `http://localhost:8765/oauth/callback` as a callback URL and enable the scopes you need
 (`read:member:trello`, `read:board:trello`, `write:board:trello` by default; override with
-`TRELLO_SCOPES`). Public clients need only the client ID; confidential clients also need
-`TRELLO_CLIENT_SECRET`.
+`TRELLO_SCOPES`). The client ID is built in; a confidential client also needs `TRELLO_CLIENT_SECRET`.
 
 Authorize once. The directory `~/.config/trello-mcp` is mounted **read/write**, because access
 tokens last an hour and each refresh rotates the single-use refresh token, which has to be saved.
 Open the printed URL yourself:
 
 ```sh
-export TRELLO_CLIENT_ID=...    # and TRELLO_CLIENT_SECRET=... for a confidential client
 mkdir -p ~/.config/trello-mcp
 docker run --rm -it -p 127.0.0.1:8765:8765 \
-  -e TRELLO_CLIENT_ID -e TRELLO_CLIENT_SECRET -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
+  -e TRELLO_CLIENT_SECRET -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
   -v "$HOME/.config/trello-mcp:/run/trello" \
   ghcr.io/devinsba/trello-mcp login --host 0.0.0.0
 ```
@@ -32,13 +30,14 @@ Or from source: `uv run trello-mcp login` (opens the browser). The tokens are sa
 ## Run with Docker (default)
 
 The image is `ghcr.io/devinsba/trello-mcp`. The token directory is mounted read/write (see above);
-`TRELLO_CLIENT_ID` (and the secret, if any) pass through from your shell.
+`TRELLO_CLIENT_SECRET` (confidential clients only; skipped when unset) passes through from your
+shell.
 
 **stdio** (the MCP client launches the container):
 
 ```sh
-claude mcp add trello -e TRELLO_CLIENT_ID -- docker run -i --rm \
-  -e TRELLO_CLIENT_ID -e TRELLO_CLIENT_SECRET -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
+claude mcp add trello -- docker run -i --rm \
+  -e TRELLO_CLIENT_SECRET -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
   -v "$HOME/.config/trello-mcp:/run/trello" \
   ghcr.io/devinsba/trello-mcp stdio
 ```
@@ -46,19 +45,19 @@ claude mcp add trello -e TRELLO_CLIENT_ID -- docker run -i --rm \
 ```json
 { "mcpServers": { "trello": { "command": "docker", "args": [
   "run", "-i", "--rm",
-  "-e", "TRELLO_CLIENT_ID", "-e", "TRELLO_MCP_TOKEN_FILE=/run/trello/token.json",
+  "-e", "TRELLO_MCP_TOKEN_FILE=/run/trello/token.json",
   "-v", "/Users/you/.config/trello-mcp:/run/trello",
   "ghcr.io/devinsba/trello-mcp", "stdio"
-], "env": { "TRELLO_CLIENT_ID": "..." } } } }
+] } } }
 ```
 
-(Add `-e TRELLO_CLIENT_SECRET` to the args and env for a confidential client.)
+(For a confidential client, add `"-e", "TRELLO_CLIENT_SECRET"` to the args and the secret to `env`.)
 
 **HTTP** (`serve`, streamable HTTP at `/mcp`, health at `/healthz`):
 
 ```sh
 docker run -d --name trello-mcp -p 127.0.0.1:8080:8080 \
-  -e TRELLO_CLIENT_ID -e TRELLO_CLIENT_SECRET -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
+  -e TRELLO_CLIENT_SECRET -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
   -v "$HOME/.config/trello-mcp:/run/trello" \
   ghcr.io/devinsba/trello-mcp
 claude mcp add --transport http trello http://localhost:8080/mcp
@@ -81,7 +80,6 @@ uv run trello-mcp stdio     # or: serve | boards | lists <board_id> | cards <lis
 
 | Var | Purpose |
 | --- | --- |
-| `TRELLO_CLIENT_ID` | required; OAuth 2.0 client ID |
 | `TRELLO_CLIENT_SECRET` | confidential clients only |
 | `TRELLO_SCOPES` | space-separated scopes (default read/write board + member read + `offline_access`) |
 | `TRELLO_MCP_TOKEN_FILE` | token path (default `~/.config/trello-mcp/token.json`) |

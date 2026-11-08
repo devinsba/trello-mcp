@@ -54,7 +54,7 @@ def make_app(base_url: str | None = None) -> FastAPI:
         pending["verifier"], challenge = _pkce()
         pending["state"] = secrets.token_urlsafe(16)  # stops other sites from planting a code
         params = {
-            "client_id": trello.client_id(),
+            "client_id": trello.CLIENT_ID,
             "scope": trello.scopes(),
             "redirect_uri": f"{base_url}/oauth/callback",
             "response_type": "code",
