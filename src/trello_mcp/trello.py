@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import requests
+from mcp.server.auth.middleware.auth_context import get_access_token
 
 # Public identifier of the OAuth 2.0 client (not a secret).
 CLIENT_ID = "nWVvErB2yFphPyjOpaBAUv56yZOGUB9f"
@@ -80,11 +81,15 @@ def access_token() -> str:
     return token["access_token"]
 
 
-def call(method: str, path: str, **params):
+def call(method: str, path: str, token: str | None = None, **params):
+    """`token` wins; else the caller's bearer under `serve`; else the token file (stdio/CLI)."""
+    if token is None:
+        caller = get_access_token()
+        token = caller.token if caller else access_token()
     resp = requests.request(
         method,
         f"{API}{path}",
-        headers={"Authorization": f"Bearer {access_token()}"},
+        headers={"Authorization": f"Bearer {token}"},
         params=params,
         timeout=30,
     )

@@ -11,7 +11,7 @@ Create an OAuth 2.0 client for your app at <https://trello.com/apps/admin> (OAut
 `read:member:trello`, `read:board:trello` and `write:board:trello`. The client ID is built in, so
 the client must be a public one (no secret).
 
-Authorize once. The directory `~/.config/trello-mcp` is mounted **read/write**, because access
+Authorize once for `stdio` and the CLI (`serve` does not need this). The directory `~/.config/trello-mcp` is mounted **read/write**, because access
 tokens last an hour and each refresh rotates the single-use refresh token, which has to be saved.
 Open the printed URL yourself:
 
@@ -49,17 +49,41 @@ claude mcp add trello -- docker run -i --rm \
 ] } } }
 ```
 
-**HTTP** (`serve`, streamable HTTP at `/mcp`, health at `/healthz`):
+**HTTP** (`serve`, streamable HTTP at `/mcp`, health at `/healthz`) is stateless: it keeps no
+token. It is an OAuth resource server (RFC 9728 metadata at `/.well-known/oauth-protected-resource/mcp`)
+that points clients at Atlassian's authorization server, and passes each caller's bearer token
+straight to Trello. A token Trello rejects gets a 401, so the client re-authorizes or refreshes.
+Set `TRELLO_MCP_BASE_URL` to the public URL (e.g. `https://trello-mcp.example.com`); any number of
+replicas can run, with no volume.
 
 ```sh
 docker run -d --name trello-mcp -p 127.0.0.1:8080:8080 \
-  -e TRELLO_MCP_TOKEN_FILE=/run/trello/token.json \
-  -v "$HOME/.config/trello-mcp:/run/trello" \
-  ghcr.io/devinsba/trello-mcp
-claude mcp add --transport http trello http://localhost:8080/mcp
+  -e TRELLO_MCP_BASE_URL=http://localhost:8080 ghcr.io/devinsba/trello-mcp
+claude mcp add --transport http --client-id nWVvErB2yFphPyjOpaBAUv56yZOGUB9f \
+  --callback-port 8765 trello http://localhost:8080/mcp
 ```
 
-Other HTTP clients: `{ "mcpServers": { "trello": { "url": "http://localhost:8080/mcp" } } }`.
+The client runs the browser sign-in itself (`/mcp` in Claude Code, then authenticate). Add the
+client's callback URL (Claude Code: `http://localhost:8765/callback`) to the OAuth app's callbacks.
+Atlassian has no dynamic client registration, so the client must be given the client ID.
+
+**Headless agents** (nobody to sign in): run `serve --refresh-token-file /data/token.json` with a
+token file from `login`. The server then holds the token and refreshes it (rewriting the file; the
+directory must be writable). Run exactly one replica per file. Seed the file once (`kubectl cp`)
+and never overwrite it on restart, since the rotated refresh token would be lost.
+
+> **Warning: this mode has no authentication.** Anyone who can reach the port can read and write
+> your Trello boards as you. Keep it reachable only by the agent:
+>
+> - Prefer a **sidecar** in the agent's pod and connect to `http://localhost:8080/mcp`, or bind
+>   with `--host 127.0.0.1`. Nothing outside the pod can then reach it.
+> - If it runs as its own Deployment, a **NetworkPolicy** that allows ingress only from the agent
+>   pods is mandatory. Without one, every pod in the cluster can use your token. Kubernetes allows
+>   all traffic by default, and a NetworkPolicy has no effect unless the cluster's CNI enforces it.
+> - Never create an Ingress, IngressRoute or LoadBalancer Service for it. The public, authenticated
+>   deployment is the passthrough mode above (no flag), not this one.
+> - Mount the token volume only into this container. Treat the token file like a password, since
+>   it holds a refresh token that lasts 90 days.
 
 Don't run two containers against one token directory at once: a simultaneous refresh can burn the
 single-use refresh token. On Linux the container user must be able to write the directory: add
@@ -76,12 +100,11 @@ uv run trello-mcp stdio     # or: serve | boards | lists <board_id> | cards <lis
 
 | Var | Purpose |
 | --- | --- |
-| `TRELLO_MCP_TOKEN_FILE` | token path (default `~/.config/trello-mcp/token.json`) |
+| `TRELLO_MCP_TOKEN_FILE` | token path for `login`, `stdio` and the CLI (not used by `serve`) |
 | `LOG_LEVEL` | default `INFO`; logs are JSON on stderr with trace ids |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | enables OTLP/HTTP traces and metrics export (other `OTEL_*` apply) |
-| `TRELLO_MCP_BASE_URL` | public URL for the `serve` OAuth callback (default `http://localhost:8765`) |
+| `TRELLO_MCP_BASE_URL` | public URL of `serve` (default `http://localhost:8080`) |
 
-`serve` also exposes `/oauth/login`. The `serve` endpoint has no auth of its own: keep it private.
 
 ## Releases
 
