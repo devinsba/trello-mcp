@@ -76,6 +76,15 @@ jobs:
           gh release view "$GITHUB_REF_NAME" --json isDraft,apiUrl --jq '"draft=\(.isDraft)\nurl=\(.apiUrl)"' >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Attach the Python package while the draft is still tagged (the notes job detaches it).
+      # GitHub Packages has no PyPI registry, so the release assets are the distribution point.
+      - uses: astral-sh/setup-uv@v10.3.2 # no floating major tags for this action
+      - run: |
+          uv version "${GITHUB_REF_NAME#v}" --frozen
+          uv build
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notes:
     needs: publish

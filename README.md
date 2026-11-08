@@ -64,7 +64,8 @@ The `serve` endpoint has no auth of its own: keep it private.
 ## Releases
 
 Pushing a `vX.Y.Z` tag runs CI, builds a multi-arch image to `ghcr.io/devinsba/trello-mcp`, and
-drafts a GitHub Release whose notes the `release-notes` agentic workflow writes (edit the `.md`,
+drafts a GitHub Release with the wheel and sdist attached (install with
+`uv tool install <wheel URL>`; GitHub Packages has no Python registry) and whose notes the `release-notes` agentic workflow writes (edit the `.md`,
 not the generated `.lock.yml`).
 
 ## Development
